@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0e0f1a">
+<title>Piano Quest — учись играть на пианино</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0e0f1a;--panel:#171a2b;--panel2:#22263f;--line:#272b47;--txt:#eef0ff;--mut:#9aa0c3;--acc:#ffcc33;--good:#3ddc84;--bad:#ff5470;--blue:#4fb3ff}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+body{padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+button{font:inherit;color:inherit;background:var(--panel2);border:0;border-radius:12px;padding:10px 14px;cursor:pointer;touch-action:manipulation}
+button:active{transform:scale(.97)}
+.hidden{display:none!important}
+.grow{flex:1;min-width:0}
+.px{font-family:"Press Start 2P",ui-monospace,monospace}
+/* home */
+header.top{display:flex;align-items:center;gap:10px;padding:16px 16px 6px;max-width:960px;margin:0 auto}
+.logo{font-size:17px;line-height:1.35;color:var(--acc);text-shadow:3px 3px 0 #b4390a}
+.logo small{display:block;font-family:system-ui,sans-serif;font-size:12px;color:var(--mut);text-shadow:none;margin-top:4px}
+main{padding:0 14px 48px;max-width:960px;margin:0 auto}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 12px}
+.btn-acc{background:var(--acc);color:#1b1500;font-weight:700}
+.hint{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 14px;color:var(--mut);font-size:14px;line-height:1.5}
+.hint b{color:var(--txt)}
+.cat h2{font-size:11px;margin:24px 2px 10px;color:#cfd3ff;line-height:1.6}
+.list{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}
+.card{background:var(--panel);border-radius:16px;padding:12px 14px;display:flex;align-items:center;gap:12px;cursor:pointer;border:1px solid var(--line);position:relative}
+.card:active{transform:scale(.99)}
+.card .ic{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;font-size:20px;background:var(--panel2);flex:none}
+.card b{display:block;font-size:15px;padding-right:18px}
+.card .meta{font-size:12px;color:var(--mut);margin-top:3px}
+.stars{color:var(--acc);font-size:13px;letter-spacing:1px}
+.diff i{display:inline-block;width:5px;height:9px;margin-right:2px;border-radius:2px;background:#3a3f63}
+.diff i.on{background:var(--good)}
+.card .del{position:absolute;top:4px;right:4px;padding:6px 9px;background:transparent;color:var(--mut);font-size:13px}
+.card.empty{border:1.5px dashed #3b4170;background:transparent;color:var(--mut);font-size:14px}
+/* player */
+#player{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;z-index:10;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+.pbar{display:flex;align-items:center;gap:8px;padding:8px 10px 6px}
+.pbar .ttl{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prog{height:4px;background:#252942;margin:0 10px;border-radius:3px;overflow:hidden;flex:none}
+.prog>div{height:100%;background:var(--acc);transform-origin:left;transform:scaleX(0)}
+.tabs{display:flex;gap:4px;margin:8px 10px 0;background:var(--panel);padding:4px;border-radius:12px;flex:none}
+.tabs button{flex:1;padding:8px 2px;font-size:13px;background:transparent;border-radius:9px;white-space:nowrap}
+.tabs button.on{background:var(--panel2);color:var(--acc);font-weight:700}
+.info{height:66px;display:flex;align-items:center;justify-content:space-between;padding:0 14px;gap:10px;flex:none}
+#infoA{font-size:21px;font-weight:800;line-height:1.15}
+#infoB{font-size:12px;color:var(--mut);text-align:right;line-height:1.45;white-space:nowrap}
+.stage{flex:1;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;min-height:0}
+.inner{position:relative;height:100%;display:flex;flex-direction:column;min-width:100%}
+.fall{flex:1;position:relative;min-height:60px;background:linear-gradient(#0b0c16,#14162a)}
+.fall canvas{position:absolute;left:0;top:0;display:block}
+.keys{position:relative;height:clamp(96px,22vh,180px);flex:none;touch-action:none;user-select:none;-webkit-user-select:none;background:#000}
+.k{position:absolute;top:0;border-radius:0 0 6px 6px}
+.k.w{height:100%;background:linear-gradient(#fafaff,#dcdce8);border:1px solid #7d7d96;border-top:0;z-index:1}
+.k.b{height:62%;background:linear-gradient(#3b3b48,#0c0c12);z-index:2;border:1px solid #000;border-top:0}
+.k span{position:absolute;left:-8px;right:-8px;bottom:6px;text-align:center;font-size:11px;font-weight:700;color:#4a4a66;pointer-events:none;opacity:0;white-space:nowrap}
+.k.b span{color:#fff;font-size:9px;bottom:5px}
+.keys.all .k span,.k.cc span,.k.tg span,.k.ok span,.k.bad span{opacity:1}
+.k.tg.w{background:linear-gradient(#fff6c4,#ffcc33)}
+.k.tg.b{background:linear-gradient(#ffd84d,#b98500)}
+.k.tg span{color:#3a2a00}
+.k.pl.w{background:linear-gradient(#ebe6ff,#9b8cff)}
+.k.pl.b{background:#6d5cff}
+.k.ok.w,.k.ok.b{background:var(--good)}
+.k.bad.w,.k.bad.b{background:var(--bad)}
+.k.hd{box-shadow:inset 0 -9px 0 var(--blue)}
+.k.c4::before{content:'';position:absolute;left:50%;top:8px;width:6px;height:6px;margin-left:-3px;border-radius:50%;background:#ff8a3d}
+.ctrl{display:flex;align-items:center;gap:8px;padding:8px 10px 10px;flex:none}
+.ctrl.free .songonly{display:none}
+.play{width:58px;height:46px;font-size:19px;background:var(--acc);color:#1b1500;font-weight:800}
+.spd{display:flex;align-items:center;background:var(--panel);border-radius:12px}
+.spd button{background:transparent;padding:10px 12px}
+.spd span{min-width:44px;text-align:center;font-size:14px;font-variant-numeric:tabular-nums}
+.micbtn{position:relative;overflow:hidden;white-space:nowrap}
+.micbtn.on{background:#163b29;color:var(--good)}
+.micbtn.pulse{animation:pulse 1.6s infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(255,204,51,.55)}50%{box-shadow:0 0 0 6px rgba(255,204,51,0)}}
+.micbtn i{position:absolute;left:0;bottom:0;height:3px;width:100%;background:var(--good);transform-origin:left;transform:scaleX(0)}
+/* modal */
+.modal{position:fixed;inset:0;background:rgba(5,6,14,.72);display:flex;align-items:flex-end;justify-content:center;z-index:50}
+.sheet{background:var(--panel);width:100%;max-width:560px;max-height:88vh;overflow:auto;border-radius:20px 20px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom))}
+@media(min-width:700px){.modal{align-items:center}.sheet{border-radius:20px}}
+.sheet h3{margin:0 0 12px;font-size:18px}
+.sheet p{line-height:1.5}
+.row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--line);font-size:15px}
+input[type=text],input[type=number],select,textarea{width:100%;background:var(--bg);color:var(--txt);border:1px solid #2e3354;border-radius:10px;padding:10px;font:inherit;font-size:16px}
+textarea{min-height:120px;font-family:ui-monospace,Menlo,monospace;font-size:14px}
+input[type=checkbox]{width:22px;height:22px;accent-color:var(--acc);flex:none}
+input[type=range]{accent-color:var(--acc);width:140px}
+.btns{display:flex;gap:8px;margin-top:14px;justify-content:flex-end;flex-wrap:wrap}
+.lbl{display:block;font-size:12px;color:var(--mut);margin:10px 0 4px}
+.small{font-size:12px;color:var(--mut);line-height:1.45}
+code{background:var(--bg);padding:1px 5px;border-radius:5px;color:#ffe08a}
+#toast{position:fixed;left:50%;bottom:96px;transform:translateX(-50%);background:#2a2f52;padding:10px 16px;border-radius:12px;z-index:60;font-size:14px;max-width:90vw;opacity:0;transition:opacity .25s;pointer-events:none;text-align:center}
+#toast.show{opacity:1}
+.res{text-align:center}.res .st{font-size:40px;color:var(--acc);letter-spacing:6px}
+.res .pct{font-size:34px;font-weight:800;margin:4px 0}
+.meter{height:10px;background:#252942;border-radius:5px;overflow:hidden;margin-top:8px;position:relative}
+.meter i{position:absolute;left:0;top:0;bottom:0;background:var(--good);width:0}
+.meter b{position:absolute;top:0;bottom:0;width:3px;background:var(--acc)}
+@media(max-height:500px){
+.pbar{padding:4px 8px 2px}.pbar button{padding:6px 10px}.prog{margin:0 8px}
+.tabs{margin:4px 10px 0;padding:3px}.tabs button{padding:5px 2px;font-size:12px}
+.info{height:36px;padding:0 12px}#infoA{font-size:16px}#infoB{font-size:11px;line-height:1.2}
+.ctrl{padding:4px 10px 6px}.ctrl button{padding:6px 10px}.play{height:36px;width:50px}.spd button{padding:6px 10px}
+.keys{height:clamp(70px,28vh,120px)}}
+</style>
+</head>
+<body>
+
+<div id="home">
+  <header class="top">
+    <div class="grow"><div class="logo px">PIANO QUEST<small>Учись играть мелодии на пианино</small></div></div>
+    <button id="homeSet" aria-label="Настройки">⚙️</button>
+  </header>
+  <main>
+    <div class="actions">
+      <button class="btn-acc" id="btnImport">📂 Загрузить MIDI</button>
+      <button id="btnEditor">✎ Песня из нот</button>
+      <button id="btnFree">🎹 Свободная игра</button>
+    </div>
+    <div class="hint">
+      <b>Как это работает:</b> выбери песню → нажми <b>🎤</b> → играй на настоящем пианино. Нужная клавиша подсвечивается жёлтым, приложение слышит, какую ноту ты нажал, и ждёт правильную.
+      Можно жать клавиши прямо на экране, на клавиатуре компьютера или подключить MIDI-клавиатуру.<br>
+      <b>Undertale и Minecraft:</b> загрузи MIDI-файл с нужной мелодией — приложение само вытащит из него партию и превратит в урок.
+    </div>
+    <div id="lib"></div>
+  </main>
+</div>
+
+<div id="player" class="hidden">
+  <div class="pbar">
+    <button id="pBack" aria-label="Назад">←</button>
+    <div class="ttl grow" id="pTitle"></div>
+    <button class="micbtn" id="micBtn">🎤 <span id="micTxt">Микрофон</span><i id="micLvl"></i></button>
+    <button id="pSet" aria-label="Настройки">⚙️</button>
+  </div>
+  <div class="prog"><div id="progBar"></div></div>
+  <div class="tabs" id="tabs">
+    <button data-mode="wait">🎤 Учусь</button>
+    <button data-mode="rhythm">🎵 Ритм</button>
+    <button data-mode="demo">👀 Демо</button>
+    <button data-mode="free">🎹 Свободно</button>
+  </div>
+  <div class="info"><div id="infoA"></div><div id="infoB"></div></div>
+  <div class="stage" id="stage">
+    <div class="inner" id="inner">
+      <div class="fall" id="fall"><canvas id="cv"></canvas></div>
+      <div class="keys" id="keys"></div>
+    </div>
+  </div>
+  <div class="ctrl" id="ctrl">
+    <button class="songonly" id="btnRestart" aria-label="Сначала">⏮</button>
+    <button class="play songonly" id="playBtn">▶</button>
+    <div class="spd songonly"><button id="spdDown">−</button><span id="spdVal">100%</span><button id="spdUp">+</button></div>
+    <div class="grow"></div>
+  </div>
+</div>
+
+<div id="modal" class="modal hidden"><div class="sheet" id="sheet"></div></div>
+<div id="toast"></div>
+<input type="file" id="file" accept=".mid,.midi,audio/midi,audio/x-midi,audio/mid" hidden>
+
+<script>
+'use strict';
+/* ================= helpers ================= */
+const $=(s,r=document)=>r.querySelector(s);
+const NL=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const NS=['До','До#','Ре','Ре#','Ми','Фа','Фа#','Соль','Соль#','Ля','Ля#','Си'];
+const BLK=[0,1,0,1,0,0,1,0,1,0,1,0];
+const isB=m=>BLK[m%12]===1;
+const store={get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}},
+             set(k,v){try{localStorage.setItem(k,JSON.stringify(v));return true}catch(e){return false}}};
+const S=Object.assign({solf:true,allLabels:false,anyOct:true,sens:0.5,touchSound:true,zoom:1,speed:1},store.get('pq_set',{}));
+const saveSet=()=>store.set('pq_set',S);
+function nm(m,oct=true){const a=(S.solf?NS:NL)[m%12];return oct?a+(Math.floor(m/12)-1):a}
+function thresh(){return 0.04*Math.pow(0.05,S.sens)}
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function fmtT(s){s=Math.max(0,Math.round(s));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')}
+let toastT;function toast(t,ms=2800){const e=$('#toast');e.textContent=t;e.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>e.classList.remove('show'),ms)}
+let modalTick=null;
+function modal(html,onMount){$('#sheet').innerHTML=html;$('#modal').classList.remove('hidden');if(onMount)onMount($('#sheet'))}
+function closeModal(){$('#modal').classList.add('hidden');$('#sheet').innerHTML='';modalTick=null}
+$('#modal').addEventListener('pointerdown',e=>{if(e.target.id==='modal')closeModal()});
+$('#sheet').addEventListener('click',e=>{if(e.target.closest('[data-close]'))closeModal()});
+
+/* ================= note text format ================= */
+function n2m(s){const r=/^([A-Ga-g])([#b]?)(-?\d)$/.exec(s);if(!r)return null;
+  const b={C:0,D:2,E:4,F:5,G:7,A:9,B:11}[r[1].toUpperCase()];return (+r[3]+1)*12+b+(r[2]==='#'?1:r[2]==='b'?-1:0)}
+function parseText(txt,bpm){const spb=60/(bpm||100);let t=0;const notes=[],errs=[];
+  for(const tok of String(txt).trim().split(/[\s|,]+/)){if(!tok)continue;
+    const parts=tok.split(':');const a=parts[0];const d=parts.length>1?parseFloat(parts[1]):1;
+    if(!(d>0)){errs.push(tok);continue}
+    if(/^[Rr_]$/.test(a)){t+=d*spb;continue}
+    const ms=a.split('+').map(n2m);
+    if(ms.some(x=>x==null||x<12||x>119)){errs.push(tok);continue}
+    for(const m of ms)notes.push({m,t,d:d*spb*0.92});
+    t+=d*spb}
+  return {notes,errs}}
+
+/* ================= built-in songs (public domain + exercises) ================= */
+const BUILTIN=[
+ {id:'ex-scale',cat:'ex',title:'Гамма До мажор',sub:'Правая рука',bpm:80,txt:'C4 D4 E4 F4 G4 A4 B4 C5:2 B4 A4 G4 F4 E4 D4 C4:2'},
+ {id:'ex-five',cat:'ex',title:'Пять пальцев',sub:'До–Соль, пальцы 1–5',bpm:90,txt:'C4 D4 E4 F4 G4:2 F4 E4 D4 C4:2 C4 E4 G4:2 E4 C4:2 R G4 F4 E4 D4 C4:3'},
+ {id:'ex-amin',cat:'ex',title:'Гамма Ля минор',sub:'Правая рука',bpm:80,txt:'A3 B3 C4 D4 E4 F4 G4 A4:2 G4 F4 E4 D4 C4 B3 A3:2'},
+ {id:'ex-left',cat:'ex',title:'Гамма До мажор',sub:'Левая рука',bpm:80,txt:'C3 D3 E3 F3 G3 A3 B3 C4:2 B3 A3 G3 F3 E3 D3 C3:2'},
+ {id:'twinkle',cat:'cl',title:'Мерцай, звёздочка',sub:'Народная',bpm:100,txt:'C4 C4 G4 G4 A4 A4 G4:2 F4 F4 E4 E4 D4 D4 C4:2 G4 G4 F4 F4 E4 E4 D4:2 G4 G4 F4 F4 E4 E4 D4:2 C4 C4 G4 G4 A4 A4 G4:2 F4 F4 E4 E4 D4 D4 C4:2'},
+ {id:'ode',cat:'cl',title:'Ода к радости',sub:'Бетховен',bpm:110,txt:'E4 E4 F4 G4 G4 F4 E4 D4 C4 C4 D4 E4 E4:1.5 D4:.5 D4:2 E4 E4 F4 G4 G4 F4 E4 D4 C4 C4 D4 E4 D4:1.5 C4:.5 C4:2 D4 D4 E4 C4 D4 E4:.5 F4:.5 E4 C4 D4 E4:.5 F4:.5 E4 D4 C4 D4 G3:2 E4 E4 F4 G4 G4 F4 E4 D4 C4 C4 D4 E4 D4:1.5 C4:.5 C4:2'},
+ {id:'jingle',cat:'cl',title:'Jingle Bells',sub:'Пирпонт',bpm:160,txt:'E4 E4 E4:2 E4 E4 E4:2 E4 G4 C4:1.5 D4:.5 E4:4 F4 F4 F4:1.5 F4:.5 F4 E4 E4 E4:.5 E4:.5 E4 D4 D4 E4 D4:2 G4:2 E4 E4 E4:2 E4 E4 E4:2 E4 G4 C4:1.5 D4:.5 E4:4 F4 F4 F4:1.5 F4:.5 F4 E4 E4 E4:.5 E4:.5 G4 G4 F4 D4 C4:4'},
+ {id:'korob',cat:'cl',title:'Коробейники',sub:'Народная · та самая из Тетриса',bpm:140,txt:'E5 B4:.5 C5:.5 D5 C5:.5 B4:.5 A4 A4:.5 C5:.5 E5 D5:.5 C5:.5 B4:1.5 C5:.5 D5 E5 C5 A4 A4:2 R:.5 D5 F5:.5 A5 G5:.5 F5:.5 E5:1.5 C5:.5 E5 D5:.5 C5:.5 B4 B4:.5 C5:.5 D5 E5 C5 A4 A4:2'},
+ {id:'mountain',cat:'cl',title:'В пещере горного короля',sub:'Григ',bpm:120,txt:'B4:.5 C#5:.5 D5:.5 E5:.5 F#5:.5 D5:.5 F#5 F5:.5 C#5:.5 F5 E5:.5 C5:.5 E5 B4:.5 C#5:.5 D5:.5 E5:.5 F#5:.5 D5:.5 F#5:.5 B5:.5 A5:.5 F#5:.5 D5:.5 F#5:.5 A5:2'},
+ {id:'minuet',cat:'cl',title:'Менуэт соль мажор',sub:'Петцольд (тетрадь А. М. Бах)',bpm:100,txt:'D5 G4:.5 A4:.5 B4:.5 C5:.5 D5 G4 G4 E5 C5:.5 D5:.5 E5:.5 F#5:.5 G5 G4 G4 C5 D5:.5 C5:.5 B4:.5 A4:.5 B4 C5:.5 B4:.5 A4:.5 G4:.5 F#4 G4:.5 A4:.5 B4:.5 G4:.5 A4:3 D5 G4:.5 A4:.5 B4:.5 C5:.5 D5 G4 G4 E5 C5:.5 D5:.5 E5:.5 F#5:.5 G5 G4 G4 C5 D5:.5 C5:.5 B4:.5 A4:.5 B4 C5:.5 B4:.5 A4:.5 G4:.5 A4 B4:.5 A4:.5 G4:.5 F#4:.5 G4:3'},
+ {id:'elise',cat:'cl',title:'К Элизе (начало)',sub:'Бетховен',bpm:220,txt:'E5 D#5 E5 D#5 E5 B4 D5 C5 A4:2 R C4 E4 A4 B4:2 R E4 G#4 B4 C5:2 R E4 E5 D#5 E5 D#5 E5 B4 D5 C5 A4:2 R C4 E4 A4 B4:2 R E4 C5 B4 A4:4'}
+];
+const CATS=[
+ {id:'undertale',t:'Undertale',ic:'❤️',empty:'Загрузи MIDI с мелодией из Undertale'},
+ {id:'minecraft',t:'Minecraft',ic:'⛏️',empty:'Загрузи MIDI с мелодией из Minecraft'},
+ {id:'cl',t:'Классика и народные',ic:'🎼'},
+ {id:'ex',t:'Упражнения',ic:'🖐️'},
+ {id:'my',t:'Мои песни',ic:'⭐',empty:'Загрузи MIDI или запиши ноты сам'}];
+const USER_CATS=['undertale','minecraft','my'];
+
+let LIB=[];
+function fin(s){s.notes.sort((a,b)=>a.t-b.t||a.m-b.m);let lo=127,hi=0,end=0;
+  for(const n of s.notes){if(n.m<lo)lo=n.m;if(n.m>hi)hi=n.m;if(n.t+n.d>end)end=n.t+n.d}
+  s.lo=lo;s.hi=hi;s.end=end;const nps=s.notes.length/Math.max(1,end);
+  s.diff=Math.max(1,Math.min(5,Math.round(nps*0.6+(hi-lo)/16)));return s}
+function loadLib(){LIB=BUILTIN.map(b=>fin(Object.assign({},b,{notes:parseText(b.txt,b.bpm).notes,builtin:true})));
+  for(const u of store.get('pq_songs',[])){try{LIB.push(fin({id:u.id,cat:u.cat,title:u.title,sub:u.sub||'',notes:u.n.map(a=>({m:a[0],t:a[1]/1000,d:a[2]/1000}))}))}catch(e){}}}
+function saveUser(){const arr=LIB.filter(s=>!s.builtin).map(s=>({id:s.id,cat:s.cat,title:s.title,sub:s.sub,n:s.notes.map(n=>[n.m,Math.round(n.t*1000),Math.round(n.d*1000)])}));
+  if(!store.set('pq_songs',arr))toast('Не удалось сохранить в памяти браузера — песня останется только до перезагрузки',4500)}
+
+/* ================= MIDI file parser ================= */
+function decodeText(u8){try{return new TextDecoder('utf-8',{fatal:true}).decode(u8)}catch(e){try{return new TextDecoder('windows-1251').decode(u8)}catch(_){return ''}}}
+function parseMidi(ab){const v=new DataView(ab);let p=0;const L=v.byteLength;
+  const str=n=>{let s='';for(let i=0;i<n;i++)s+=String.fromCharCode(v.getUint8(p+i));p+=n;return s};
+  const u32=()=>{const x=v.getUint32(p);p+=4;return x},u16=()=>{const x=v.getUint16(p);p+=2;return x},u8=()=>v.getUint8(p++);
+  const vlq=()=>{let x=0,b,c=0;do{b=u8();x=(x*128)+(b&127);c++}while((b&128)&&c<4);return x};
+  if(L<14||str(4)!=='MThd')throw new Error('это не MIDI-файл');
+  const hl=u32();u16();const nt=u16(),div=u16();p=8+hl;
+  let tpq=div||480,smpte=0;if(div&0x8000){smpte=(256-(div>>8))*(div&255)}
+  const tempos=[],parts={},names={};
+  for(let ti=0;ti<nt&&p+8<=L;ti++){
+    const id=str(4),len=u32(),end=Math.min(p+len,L);
+    if(id!=='MTrk'){p=end;continue}
+    let tick=0,rs=0;const open={};
+    const add=(ch,n,a,b,vel)=>{if(ch===9)return;const key=ti+'_'+ch;(parts[key]=parts[key]||{ti,ch,raw:[]}).raw.push({m:n,a,b,vel})};
+    try{
+    while(p<end){tick+=vlq();let st=v.getUint8(p);
+      if(st&128){p++;if(st<0xF0)rs=st}else{if(!rs)break;st=rs}
+      if(st===0xFF){const ty=u8(),l=vlq();
+        if(ty===0x51&&l===3)tempos.push({tick,us:(v.getUint8(p)<<16)|(v.getUint8(p+1)<<8)|v.getUint8(p+2)});
+        else if((ty===3)&&!names[ti]&&l>0)names[ti]=decodeText(new Uint8Array(ab,p,Math.min(l,end-p))).trim();
+        p+=l;if(ty===0x2F)break;continue}
+      if(st===0xF0||st===0xF7){p+=vlq();continue}
+      const ty=st&0xF0,ch=st&15;
+      if(ty===0x90||ty===0x80){const n=u8(),vel=u8();const k=ch*128+n;
+        if(ty===0x90&&vel>0)(open[k]=open[k]||[]).push({tick,vel});
+        else{const o=open[k]&&open[k].shift();if(o)add(ch,n,o.tick,tick,o.vel)}}
+      else if(ty===0xC0||ty===0xD0)p+=1;else p+=2}
+    }catch(e){}
+    for(const k in open)for(const o of open[k])add(Math.floor(k/128),k%128,o.tick,tick,o.vel);
+    p=end}
+  tempos.sort((a,b)=>a.tick-b.tick);
+  const seg=[{tick:0,sec:0,us:500000}];
+  for(const t of tempos){const s=seg[seg.length-1];if(t.tick===s.tick){s.us=t.us;continue}seg.push({tick:t.tick,sec:s.sec+(t.tick-s.tick)*s.us/1e6/tpq,us:t.us})}
+  const t2s=tk=>{if(smpte)return tk/smpte;let lo=0,hi=seg.length-1;while(lo<hi){const mid=(lo+hi+1)>>1;if(seg[mid].tick<=tk)lo=mid;else hi=mid-1}const s=seg[lo];return s.sec+(tk-s.tick)*s.us/1e6/tpq};
+  const out=[];
+  for(const key in parts){const pr=parts[key];if(pr.raw.length<2)continue;
+    const notes=pr.raw.map(r=>{const t=t2s(r.a);return {m:r.m,t,d:Math.max(0.05,t2s(r.b)-t)}}).sort((a,b)=>a.t-b.t);
+    let lo=127,hi=0,sum=0;for(const n of notes){lo=Math.min(lo,n.m);hi=Math.max(hi,n.m);sum+=n.m}
+    out.push({name:(names[pr.ti]||('Дорожка '+(pr.ti+1)))+' · канал '+(pr.ch+1),notes,lo,hi,avg:sum/notes.length})}
+  return out}
+function melodyOnly(notes){const s=[...notes].sort((a,b)=>a.t-b.t||b.m-a.m);const out=[];
+  for(const n of s){const l=out[out.length-1];if(l&&n.t-l.t<0.04){if(n.m>l.m){l.m=n.m;l.d=n.d}continue}out.push({m:n.m,t:n.t,d:n.d})}
+  for(let i=0;i<out.length-1;i++){const gap=out[i+1].t-out[i].t;if(out[i].d>gap)out[i].d=Math.max(0.05,gap*0.95)}
+  return out}
+
+/* ================= audio: synth ================= */
+let AC=null,master=null;
+function audio(){if(!AC){const C=window.AudioContext||window.webkitAudioContext;AC=new C({latencyHint:'interactive'});
+    const comp=AC.createDynamicsCompressor();master=AC.createGain();master.gain.value=0.6;master.connect(comp);comp.connect(AC.destination)}
+  if(AC.state==='suspended')AC.resume();return AC}
+function playTone(m,dur=0.5,vel=0.8,at=0){const ac=audio();const t=ac.currentTime+at;const f=440*Math.pow(2,(m-69)/12);
+  const g=ac.createGain(),o1=ac.createOscillator(),o2=ac.createOscillator(),g2=ac.createGain();
+  o1.type='triangle';o1.frequency.value=f;o2.type='sine';o2.frequency.value=f*2;g2.gain.value=0.22;
+  const pk=0.3*vel,hold=Math.max(0.3,dur);
+  g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(pk,t+0.008);g.gain.exponentialRampToValueAtTime(pk*0.45,t+0.25);
+  g.gain.setTargetAtTime(0.0001,t+hold,0.07);
+  o1.connect(g);o2.connect(g2);g2.connect(g);g.connect(master);o1.start(t);o2.start(t);o1.stop(t+hold+0.6);o2.stop(t+hold+0.6)}
+
+/* ================= microphone + pitch detection (YIN) ================= */
+const mic={on:false,stream:null,src:null,an:null,buf:null,x:null,d:null,sr:48000,dec:2,level:0,cand:-1,cc:0,cur:-1,minSince:1,reat:false,heard:-1,cents:0,freq:0,avg:0,skip:1,fc:0};
+async function micStart(){
+  try{
+    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)throw Object.assign(new Error('nosupport'),{name:'NoSupport'});
+    const ac=audio();
+    const st=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
+    mic.stream=st;mic.src=ac.createMediaStreamSource(st);mic.an=ac.createAnalyser();mic.an.fftSize=4096;mic.src.connect(mic.an);
+    mic.buf=new Float32Array(4096);mic.sr=ac.sampleRate;mic.dec=Math.max(1,Math.round(mic.sr/24000));
+    mic.x=new Float32Array(Math.floor(4096/mic.dec));mic.d=new Float32Array(1200);mic.on=true;mic.cur=-1;mic.cand=-1;
+    updMicBtn();ensureLoop();toast('Микрофон включён — играй!')
+  }catch(e){micError(e)}}
+function micStop(){try{mic.stream&&mic.stream.getTracks().forEach(t=>t.stop());mic.src&&mic.src.disconnect()}catch(e){}
+  mic.on=false;mic.heard=-1;mic.level=0;updMicBtn()}
+function micError(e){let inFrame=true;try{inFrame=window.self!==window.top}catch(_){}
+  let msg;
+  if(!window.isSecureContext)msg='Микрофон работает только по адресу https:// (или localhost). Открой приложение по защищённой ссылке.';
+  else if(inFrame&&(e.name==='NotAllowedError'||e.name==='SecurityError'||e.name==='NoSupport'))msg='Во встроенном окне браузер не даёт доступ к микрофону. Открой файл piano-quest.html напрямую в Chrome, Safari или Edge — там всё заработает.';
+  else if(e.name==='NotAllowedError')msg='Доступ к микрофону запрещён. Разреши его в настройках сайта (значок слева от адреса) и попробуй снова.';
+  else if(e.name==='NotFoundError')msg='Микрофон не найден. Подключи его и попробуй снова.';
+  else msg='Не удалось включить микрофон: '+(e.message||e.name);
+  modal(`<h3>🎤 Микрофон</h3><p>${esc(msg)}</p><p class="small">Пока можно играть, нажимая клавиши на экране, на клавиатуре компьютера или на MIDI-клавиатуре.</p><div class="btns"><button class="btn-acc" data-close>Понятно</button></div>`)}
+function yin(x,sr){const W=x.length>>1;const maxT=Math.min(W-1,Math.floor(sr/55),mic.d.length-2),minT=Math.max(2,Math.floor(sr/2200));const d=mic.d;
+  for(let tau=1;tau<=maxT;tau++){let s=0;for(let j=0;j<W;j++){const df=x[j]-x[j+tau];s+=df*df}d[tau]=s}
+  d[0]=1;let run=0;for(let tau=1;tau<=maxT;tau++){run+=d[tau];d[tau]=run>0?d[tau]*tau/run:1}
+  let tau=-1;for(let t=minT;t<=maxT;t++){if(d[t]<0.15){while(t+1<=maxT&&d[t+1]<d[t])t++;tau=t;break}}
+  if(tau<0)return -1;
+  let bt=tau;if(tau>1&&tau<maxT){const a=d[tau-1],b=d[tau],c=d[tau+1];const den=a-2*b+c;if(den!==0)bt=tau+(a-c)/(2*den)}
+  return sr/bt}
+function micTick(){mic.an.getFloatTimeDomainData(mic.buf);const b=mic.buf,x=mic.x,dec=mic.dec,n=x.length;let r=0;
+  for(let i=0;i<n;i++){let s=0;const o=i*dec;for(let k=0;k<dec;k++)s+=b[o+k];const v=s/dec;x[i]=v;r+=v*v}
+  const rms=Math.sqrt(r/n);mic.level=mic.level*0.6+rms*0.4;const th=thresh();
+  if(rms<th){mic.cand=-1;mic.cc=0;mic.cur=-1;mic.heard=-1;mic.minSince=rms;mic.reat=false;return}
+  if(rms<mic.minSince)mic.minSince=rms;
+  if(rms>mic.minSince*1.8&&rms>th*1.5){mic.reat=true;mic.minSince=rms}
+  const f=yin(x,mic.sr/dec);if(f<=0)return;
+  const mf=69+12*Math.log2(f/440);const m=Math.round(mf);if(m<21||m>108)return;
+  mic.freq=f;mic.cents=Math.round((mf-m)*100);mic.heard=m;
+  if(m===mic.cand)mic.cc++;else{mic.cand=m;mic.cc=1}
+  if(mic.cc>=3&&(m!==mic.cur||mic.reat)){mic.cur=m;mic.reat=false;mic.minSince=rms;userNote(m,'mic')}}
+function updMicBtn(){const b=$('#micBtn');b.classList.toggle('on',mic.on);$('#micTxt').textContent=mic.on?'Слушаю':'Микрофон';
+  b.classList.toggle('pulse',!mic.on&&P.open&&P.mode!=='demo')}
+function lvlMap(v){return Math.max(0,Math.min(1,Math.log10(Math.max(v,1e-4)/0.001)/2))}
+
+/* ================= Web MIDI keyboard ================= */
+function initMidi(){if(!navigator.requestMIDIAccess){toast('Этот браузер не поддерживает MIDI — попробуй Chrome или Edge',3500);return}
+  navigator.requestMIDIAccess().then(acc=>{const hook=()=>{let c=0;acc.inputs.forEach(inp=>{c++;inp.onmidimessage=ev=>{const d=ev.data;
+        if(d.length>=3&&(d[0]&0xF0)===0x90&&d[2]>0){P.lastManual={m:d[1],time:performance.now()};userNote(d[1],'midi')}}});return c};
+    const c=hook();acc.onstatechange=hook;toast(c?'MIDI-клавиатура подключена':'MIDI доступен, но клавиатура не найдена — подключи её',3500)})
+  .catch(()=>toast('Нет доступа к MIDI',3000))}
+
+/* ================= player state ================= */
+const P={open:false,mode:'wait',song:null,notes:[],steps:[],t:0,playing:false,si:0,ri:0,di:0,good:0,bad:0,miss:0,score:0,combo:0,maxCombo:0,
+  done:false,elapsed:0,flash:new Map(),judge:'',kbBase:60,lastManual:{m:-1,time:0},infoKey:'',progV:-1,lastFollow:0,hinted:false};
+const K={lo:48,hi:83,pos:{},el:{},cls:{},base:{},total:0,ww:30};
+const cv=$('#cv'),ctx=cv.getContext('2d',{alpha:true});let dpr=1,CW=0,CH=0;
+const SPEEDS=[0.25,0.4,0.5,0.6,0.75,0.9,1,1.1,1.25,1.5];
+const pps=()=>140*S.zoom;
+const same=(a,b)=>S.anyOct?(a%12===b%12):a===b;
+function mapRange(m){if(m>=K.lo&&m<=K.hi)return m;let x=m;while(x<K.lo)x+=12;while(x>K.hi)x-=12;return x}
+function buildSteps(notes){const st=[];for(const n of notes){const l=st[st.length-1];if(l&&n.t-l.t<0.035){l.ms.push(n.m);l.notes.push(n)}else st.push({t:n.t,ms:[n.m],notes:[n]})}return st}
+function lb(arr,t){let lo=0,hi=arr.length;while(lo<hi){const mid=(lo+hi)>>1;if(arr[mid].t<t)lo=mid+1;else hi=mid}return lo}
+
+function layoutKeys(lo,hi){lo=Math.max(21,lo);hi=Math.min(108,hi);
+  if(hi-lo<23){const c=(lo+hi)>>1;lo=c-12;hi=c+11}
+  lo-=lo%12;hi+=11-hi%12;
+  K.lo=lo;K.hi=hi;const stage=$('#stage');const whites=[];for(let m=lo;m<=hi;m++)if(!isB(m))whites.push(m);
+  const ww=Math.max(26,stage.clientWidth/whites.length);K.ww=ww;K.total=Math.floor(ww*whites.length);const bw=ww*0.62;
+  K.pos={};whites.forEach((m,i)=>K.pos[m]={x:i*ww,w:ww,b:0});
+  for(let m=lo;m<=hi;m++)if(isB(m))K.pos[m]={x:K.pos[m-1].x+ww-bw/2,w:bw,b:1};
+  $('#inner').style.width=K.total+'px';
+  let h='';for(let m=lo;m<=hi;m++){const p=K.pos[m];const base='k '+(p.b?'b':'w')+(m%12===0?' cc':'')+(m===60?' c4':'');K.base[m]=base;
+    h+=`<div class="${base}" data-m="${m}" style="left:${p.x.toFixed(1)}px;width:${p.w.toFixed(1)}px"><span>${nm(m,m%12===0)}</span></div>`}
+  const kd=$('#keys');kd.innerHTML=h;K.el={};K.cls={};kd.querySelectorAll('.k').forEach(e=>{const m=+e.dataset.m;K.el[m]=e;K.cls[m]=e.className});
+  kd.classList.toggle('all',S.allLabels);sizeCanvas()}
+function relabel(){for(const m in K.el)K.el[m].firstChild.textContent=nm(+m,(+m)%12===0);$('#keys').classList.toggle('all',S.allLabels);P.infoKey=''}
+function sizeCanvas(){const f=$('#fall');CW=K.total;CH=Math.max(40,f.clientHeight);dpr=Math.min(2,window.devicePixelRatio||1);
+  cv.width=Math.round(CW*dpr);cv.height=Math.round(CH*dpr);cv.style.width=CW+'px';cv.style.height=CH+'px';ctx.setTransform(dpr,0,0,dpr,0,0)}
+function scrollToKey(m,instant){const p=K.pos[mapRange(m)];if(!p)return;const st=$('#stage');const vw=st.clientWidth;if(K.total<=vw+1)return;
+  const sl=st.scrollLeft;if(instant||p.x<sl+K.ww*0.5||p.x+p.w>sl+vw-K.ww*0.5)st.scrollTo({left:Math.max(0,p.x+p.w/2-vw/2),behavior:instant?'auto':'smooth'})}
+function leadIn(){return Math.min(3,Math.max(1,(CH*0.7)/pps()))}
+
+function openSong(s){P.song=s;showPlayer(s.title);setMode(P.mode==='free'?'wait':P.mode);
+  if(!mic.on&&!P.hinted){P.hinted=true;setTimeout(()=>toast('Нажми 🎤 вверху — и я буду слышать твоё пианино',3500),400)}}
+function openFree(){P.song=null;showPlayer('Свободная игра');setMode('free')}
+function showPlayer(title){P.open=true;$('#home').classList.add('hidden');$('#player').classList.remove('hidden');$('#pTitle').textContent=title;ensureLoop()}
+function closePlayer(){P.open=false;P.playing=false;$('#player').classList.add('hidden');$('#home').classList.remove('hidden');renderHome();updMicBtn()}
+function setMode(md){if(md!=='free'&&!P.song){toast('Сначала выбери песню в списке');return}
+  P.mode=md;document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('on',b.dataset.mode===md));
+  $('#ctrl').classList.toggle('free',md==='free');updMicBtn();reset()}
+function reset(){P.runId=(P.runId||0)+1;Object.assign(P,{tail:0,playing:false,done:false,si:0,ri:0,di:0,good:0,bad:0,miss:0,score:0,combo:0,maxCombo:0,elapsed:0,judge:'',infoKey:'',progV:-1});P.flash.clear();
+  if(P.mode==='free'||!P.song){P.notes=[];P.steps=[];layoutKeys(48,83);P.kbBase=60}
+  else{P.notes=P.song.notes.map(n=>({m:n.m,t:n.t,d:n.d,hit:0,miss:0}));P.steps=buildSteps(P.notes);layoutKeys(P.song.lo,P.song.hi);
+    const f=P.notes[0].m;P.kbBase=Math.floor(f/12)*12}
+  P.t=-leadIn();updPlay();
+  if(P.notes.length)scrollToKey(P.notes[0].m,true);else scrollToKey(60,true)}
+function updPlay(){$('#playBtn').textContent=P.playing?'⏸':'▶';$('#spdVal').textContent=Math.round(S.speed*100)+'%'}
+function togglePlay(){if(P.mode==='free')return;audio();if(P.done)reset();P.playing=!P.playing;updPlay();
+  if(P.playing&&P.mode==='rhythm'&&!mic.on)toast('Совет: включи 🎤 или жми клавиши на экране',2500)}
+function flash(m,type){P.flash.set(mapRange(m),{type,until:performance.now()+(type==='bad'?380:240)})}
+function press(m,src){if(S.touchSound)playTone(m,0.5,0.8);P.lastManual={m,time:performance.now()};if(P.mode==='demo'){flash(m,'pl');return}userNote(m,src)}
+
+/* ================= input → game logic ================= */
+function userNote(m,src){if(!P.open)return;
+  if(src==='mic'&&performance.now()-P.lastManual.time<650&&P.lastManual.m%12===m%12)return; // ignore echo of on-screen key sound
+  if(P.mode==='free'){flash(m,'ok');return}
+  if(P.mode==='wait')waitInput(m);else if(P.mode==='rhythm')rhythmInput(m,src)}
+const PRAISE=['Верно!','Супер!','Отлично!','Так держать!','Класс!'];
+function waitInput(m){if(P.done)return;const st=P.steps[P.si];if(!st)return;
+  if(!P.playing){P.playing=true;updPlay()}
+  const hitM=st.ms.find(x=>same(x,m));
+  if(hitM!==undefined){for(const n of st.notes)n.hit=1;P.good++;flash(hitM,'ok');P.si++;if(P.t<st.t)P.t=st.t;P.judge=PRAISE[P.good%PRAISE.length];
+    const nx=P.steps[P.si];if(nx)scrollToKey(nx.ms[0])}
+  else{P.bad++;flash(m,'bad');P.judge='Это '+nm(m)}}
+const hitWin=()=>0.2*S.speed+0.04;
+function rhythmInput(m,src){if(!P.playing)return;const win=hitWin();const tt=P.t-(src==='mic'?0.07*S.speed:0);let best=null,bd=1e9;
+  for(let i=P.ri;i<P.notes.length;i++){const n=P.notes[i];if(n.t>tt+win)break;if(n.hit||n.miss||!same(n.m,m))continue;const dd=Math.abs(n.t-tt);if(dd<=win&&dd<bd){bd=dd;best=n}}
+  if(best){best.hit=1;P.good++;P.combo++;P.maxCombo=Math.max(P.maxCombo,P.combo);const q=1-bd/win;P.score+=Math.round(50+50*q)+Math.min(P.combo,50)*2;P.judge=q>0.55?'Отлично!':'Хорошо';flash(best.m,'ok')}
+  else{P.bad++;P.combo=0;P.judge='Не та нота';flash(m,'bad')}}
+function finish(){if(P.done)return;P.done=true;P.playing=false;updPlay();const s=P.song;
+  if(P.mode==='demo'){toast('Демо закончилось. Теперь попробуй сам во вкладке «Учусь»!',3500);return}
+  const acc=P.mode==='wait'?P.good/Math.max(1,P.good+P.bad):P.good/Math.max(1,P.notes.length+P.bad*0.5);
+  const pct=Math.round(acc*100),stars=pct>=95?3:pct>=80?2:pct>=50?1:0;
+  const prog=store.get('pq_prog',{});const old=prog[s.id]||{best:0,stars:0};const rec=old.best>0&&pct>old.best;
+  if(pct>0){prog[s.id]={best:Math.max(old.best,pct),stars:Math.max(old.stars,stars)};store.set('pq_prog',prog)}
+  const runId=P.runId=(P.runId||0)+1;
+  setTimeout(()=>{if(!P.open||!P.done||P.runId!==runId)return;modal(`<div class="res"><h3>${esc(s.title)}</h3><div class="st">${'★'.repeat(stars)}${'☆'.repeat(3-stars)}</div><div class="pct">${pct}%</div>
+    <p class="small">${P.mode==='wait'?`Верно: ${P.good} · Ошибок: ${P.bad} · Время: ${fmtT(P.elapsed)}`:`Попаданий: ${P.good} из ${P.notes.length} · Очки: ${P.score} · Лучшее комбо: ${P.maxCombo}`}${rec?'<br>🎉 Новый рекорд!':''}</p>
+    <div class="btns" style="justify-content:center"><button id="rsBack">К песням</button><button class="btn-acc" id="rsAgain">Ещё раз</button></div></div>`,
+    sh=>{sh.querySelector('#rsAgain').onclick=()=>{closeModal();reset()};sh.querySelector('#rsBack').onclick=()=>{closeModal();closePlayer()}})},450)}
+
+/* ================= main loop ================= */
+let raf=0,lastTs=0;
+function ensureLoop(){if(!raf){lastTs=0;raf=requestAnimationFrame(loop)}}
+function loop(ts){const dt=lastTs?Math.min(0.05,(ts-lastTs)/1000):0;lastTs=ts;
+  if(mic.on&&(mic.skip<=1||(mic.fc++%mic.skip===0))){const t0=performance.now();micTick();mic.avg=mic.avg*0.95+(performance.now()-t0)*0.05;mic.skip=mic.avg>6?2:1}
+  const now=performance.now();
+  if(P.open){update(dt,now);render(now)}
+  if(modalTick)modalTick();
+  raf=(P.open||mic.on)?requestAnimationFrame(loop):0}
+function followScroll(now){if(now-P.lastFollow<350)return;P.lastFollow=now;const i=lb(P.notes,P.t);const n=P.notes[i];if(n)scrollToKey(n.m)}
+function update(dt,now){if(P.mode==='free'||!P.playing)return;P.t+=dt*S.speed;P.elapsed+=dt;const md=P.mode,N=P.notes;
+  if(md==='wait'){const st=P.steps[P.si];if(st){if(P.t>st.t)P.t=st.t;P.tail=0}else{P.tail=(P.tail||0)+dt;if(P.tail>0.7)finish()}}
+  else if(md==='rhythm'){const win=hitWin();while(P.ri<N.length&&N[P.ri].t<P.t-win){const n=N[P.ri];if(!n.hit){n.miss=1;P.miss++;P.combo=0;P.judge='Мимо'}P.ri++}
+    if(P.t>P.song.end+1)finish();followScroll(now)}
+  else if(md==='demo'){while(P.di<N.length&&N[P.di].t<=P.t){const n=N[P.di];playTone(n.m,n.d/S.speed,0.7);P.di++}
+    if(P.t>P.song.end+0.8)finish();followScroll(now)}}
+function rr(c,x,y,w,h,r){c.beginPath();if(c.roundRect)c.roundRect(x,y,w,h,r);else c.rect(x,y,w,h);c.fill()}
+function render(now){drawFall();renderKeys(now);renderInfo();
+  if(P.song){const v=Math.max(0,Math.min(1,P.t/P.song.end));if(Math.abs(v-P.progV)>0.002){P.progV=v;$('#progBar').style.transform='scaleX('+v.toFixed(4)+')'}}
+  else if(P.progV!==0){P.progV=0;$('#progBar').style.transform='scaleX(0)'}
+  $('#micLvl').style.transform='scaleX('+(mic.on?lvlMap(mic.level):0).toFixed(3)+')'}
+function drawFall(){const c=ctx,W=CW,H=CH;c.clearRect(0,0,W,H);
+  c.fillStyle='rgba(255,255,255,0.03)';for(let m=K.lo;m<=K.hi;m++)if(isB(m)){const p=K.pos[m];c.fillRect(p.x,0,p.w,H)}
+  c.fillStyle='rgba(255,255,255,0.09)';for(let m=K.lo;m<=K.hi;m+=12)c.fillRect(Math.round(K.pos[m].x),0,1,H);
+  if(P.mode==='free'){drawFree(c,H);return}
+  const pp=pps(),hitY=H-2,tTop=P.t+hitY/pp,N=P.notes;
+  const st=P.mode==='wait'?P.steps[P.si]:null;
+  c.fillStyle=st&&P.playing&&P.t>=st.t-0.001?'#ffcc33':'rgba(255,204,51,.45)';c.fillRect(0,hitY-2,W,3);
+  c.textAlign='center';c.textBaseline='bottom';
+  for(let i=lb(N,P.t-8);i<N.length;i++){const n=N[i];if(n.t>tTop)break;if(n.t+n.d<P.t-1.2)continue;const p=K.pos[n.m];if(!p)continue;
+    const yb=hitY-(n.t-P.t)*pp,h=Math.max(8,n.d*pp-2),yt=yb-h,x=p.x+1.5,w=p.w-3;
+    let col,tc='#fff';
+    if(n.hit){col='#3ddc84';tc='#06301a'}else if(n.miss)col='#ff5470';
+    else if(st&&st.notes.includes(n)){col='#ffcc33';tc='#2a1f00'}
+    else if(P.mode==='demo'&&n.t<=P.t&&n.t+n.d>P.t){col='#d4ccff';tc='#241a66'}
+    else col=p.b?'#5b4ee0':'#8b7dff';
+    c.fillStyle=col;rr(c,x,yt,w,h,Math.min(6,w/2,h/2));
+    if(h>17&&w>12){c.fillStyle=tc;c.font='bold '+(p.b?9:11)+'px system-ui,sans-serif';c.fillText(nm(n.m,false),p.x+p.w/2,yb-3)}}}
+function drawFree(c,H){const st=$('#stage');const cx=st.scrollLeft+st.clientWidth/2;c.textAlign='center';c.textBaseline='middle';
+  if(!mic.on){c.fillStyle='#9aa0c3';c.font='16px system-ui,sans-serif';c.fillText('Включи 🎤 — покажу, какую ноту ты играешь',cx,H/2);return}
+  const m=mic.heard;if(m<0){c.fillStyle='#5d6390';c.font='bold 20px system-ui,sans-serif';c.fillText('Сыграй ноту…',cx,H/2);return}
+  const fs=Math.min(72,H*0.3);c.fillStyle='#fff';c.font='bold '+fs+'px system-ui,sans-serif';c.fillText(nm(m),cx,H*0.36);
+  c.font='14px system-ui,sans-serif';c.fillStyle='#9aa0c3';c.fillText(NL[m%12]+(Math.floor(m/12)-1)+' · '+mic.freq.toFixed(1)+' Гц · '+(mic.cents>0?'+':'')+mic.cents+' центов',cx,H*0.36+fs*0.7);
+  const bw=Math.min(260,st.clientWidth-40),y=H*0.8;c.fillStyle='#252942';c.fillRect(cx-bw/2,y-3,bw,6);c.fillStyle='#ffcc33';c.fillRect(cx-1,y-11,2,22);
+  c.fillStyle=Math.abs(mic.cents)<10?'#3ddc84':'#ff9f43';c.beginPath();c.arc(cx+mic.cents/50*bw/2,y,7,0,7);c.fill()}
+function renderKeys(now){const tg=new Set(),pl=new Set(),N=P.notes;
+  if(P.mode==='wait'){const st=P.steps[P.si];if(st)for(const m of st.ms)tg.add(m)}
+  else if(P.mode==='rhythm'){for(let i=P.ri;i<N.length;i++){const n=N[i];if(n.t>P.t+0.15)break;if(!n.hit&&!n.miss)tg.add(n.m)}}
+  else if(P.mode==='demo'){for(let i=Math.max(0,P.di-32);i<P.di;i++){const n=N[i];if(n.t+n.d>P.t)pl.add(n.m)}}
+  const hd=mic.on&&mic.heard>=0?mapRange(mic.heard):-1;
+  for(let m=K.lo;m<=K.hi;m++){let c=K.base[m];const f=P.flash.get(m);
+    if(f&&f.until>now)c+=' '+f.type;else{if(f)P.flash.delete(m);if(tg.has(m))c+=' tg';else if(pl.has(m))c+=' pl'}
+    if(m===hd)c+=' hd';if(K.cls[m]!==c){K.el[m].className=c;K.cls[m]=c}}}
+function renderInfo(){let a='',b='';const md=P.mode;
+  if(md==='wait'){const st=P.steps[P.si];
+    if(!st)a='Готово! 🎉';else if(!P.playing&&P.si===0)a='Сыграй: '+st.ms.map(m=>nm(m)).join(' + ');else a='Нажми: '+st.ms.map(m=>nm(m)).join(' + ');
+    b=`✓ ${P.good}/${P.steps.length} · ✗ ${P.bad}`+(P.judge?'<br>'+esc(P.judge):'')}
+  else if(md==='rhythm'){a=P.playing||P.done?P.score+' очков':'▶ Старт';b=`Комбо ${P.combo} · ✓${P.good} ✗${P.bad+P.miss}`+(P.judge?'<br>'+esc(P.judge):'')}
+  else if(md==='demo'){a=P.playing?'Смотри и слушай 👀':'▶ Покажу, как играть';b='Скорость '+Math.round(S.speed*100)+'%'}
+  else{a='Свободная игра';b=mic.on?'Тюнер включён':'Жми клавиши или 🎤'}
+  if(mic.on&&md!=='free')b+=`<br><span style="color:var(--blue)">🎤 слышу: ${mic.heard>=0?nm(mic.heard):'—'}</span>`;
+  const key=a+'|'+b;if(key!==P.infoKey){P.infoKey=key;$('#infoA').textContent=a;$('#infoB').innerHTML=b}}
+
+/* ================= home screen ================= */
+function renderHome(){const prog=store.get('pq_prog',{});let h='';
+  for(const c of CATS){const songs=LIB.filter(s=>s.cat===c.id);if(!songs.length&&!c.empty)continue;
+    h+=`<section class="cat"><h2 class="px">${c.ic} ${esc(c.t)}</h2><div class="list">`;
+    for(const s of songs){const p=prog[s.id];const st=p?'★'.repeat(p.stars)+'☆'.repeat(3-p.stars)+' '+p.best+'%':'';
+      h+=`<div class="card" data-id="${s.id}"><div class="ic">${c.ic}</div><div class="grow"><b>${esc(s.title)}</b>
+        <div class="meta">${s.sub?esc(s.sub)+' · ':''}${fmtT(s.end)} · ${s.notes.length} нот</div>
+        <div class="meta"><span class="diff">${[1,2,3,4,5].map(i=>`<i class="${i<=s.diff?'on':''}"></i>`).join('')}</span> <span class="stars">${st}</span></div></div>
+        ${s.builtin?'':`<button class="del" data-del="${s.id}" aria-label="Удалить">✕</button>`}</div>`}
+    if(c.empty)h+=`<div class="card empty" data-imp="${c.id}"><div class="ic">＋</div><div>${esc(c.empty)}</div></div>`;
+    h+='</div></section>'}
+  $('#lib').innerHTML=h}
+let pendingCat='my';
+function pickFile(cat){pendingCat=cat||'my';const f=$('#file');f.value='';f.click()}
+$('#file').addEventListener('change',e=>{const f=e.target.files[0];if(f)handleFile(f,pendingCat)});
+async function handleFile(f,cat){try{const parts=parseMidi(await f.arrayBuffer());if(!parts.length)throw new Error('в файле нет нот');
+    importDialog(parts,f.name.replace(/\.(mid|midi)$/i,''),cat)}catch(e){toast('Не получилось прочитать файл: '+e.message,4000)}}
+function catOptions(sel){return CATS.filter(c=>USER_CATS.includes(c.id)).map(c=>`<option value="${c.id}" ${c.id===sel?'selected':''}>${esc(c.t)}</option>`).join('')}
+function importDialog(parts,name,cat){const maxC=Math.max(...parts.map(p=>p.notes.length));let def=0,best=-1;
+  parts.forEach((p,i)=>{if(p.notes.length>=Math.max(8,maxC*0.15)&&p.avg>best){best=p.avg;def=i}});
+  modal(`<h3>Загрузка MIDI</h3>
+    <label class="lbl">Название</label><input type="text" id="imName" value="${esc(name)}">
+    <label class="lbl">Раздел</label><select id="imCat">${catOptions(cat)}</select>
+    <p class="small">Отметь дорожки с мелодией. Обычно это самая высокая партия, она уже выбрана:</p>
+    ${parts.map((p,i)=>`<label class="row"><span>${esc(p.name)}<br><span class="small">${p.notes.length} нот · ${nm(p.lo)}–${nm(p.hi)}</span></span><input type="checkbox" data-part="${i}" ${i===def?'checked':''}></label>`).join('')}
+    <label class="row"><span>Только мелодия<br><span class="small">Оставить один верхний голос, чтобы микрофон точно распознавал ноты</span></span><input type="checkbox" id="imMel" checked></label>
+    <div class="btns"><button data-close>Отмена</button><button class="btn-acc" id="imOk">Добавить</button></div>`,sh=>{
+    sh.querySelector('#imOk').onclick=()=>{let notes=[];sh.querySelectorAll('[data-part]').forEach(cb=>{if(cb.checked)notes=notes.concat(parts[+cb.dataset.part].notes)});
+      if(!notes.length){toast('Выбери хотя бы одну дорожку');return}
+      if(sh.querySelector('#imMel').checked)notes=melodyOnly(notes);notes.sort((a,b)=>a.t-b.t);const t0=notes[0].t;
+      const s=fin({id:'u'+Date.now(),cat:sh.querySelector('#imCat').value,title:sh.querySelector('#imName').value.trim()||name,sub:'MIDI',notes:notes.map(n=>({m:n.m,t:n.t-t0,d:n.d}))});
+      LIB.push(s);saveUser();renderHome();closeModal();toast('Песня «'+s.title+'» добавлена!')}})}
+function editorDialog(cat){modal(`<h3>Своя песня из нот</h3>
+    <label class="lbl">Название</label><input type="text" id="edName" placeholder="Например: Моя мелодия">
+    <div style="display:flex;gap:10px"><div class="grow"><label class="lbl">Раздел</label><select id="edCat">${catOptions(cat||'my')}</select></div>
+    <div style="width:110px"><label class="lbl">Темп (BPM)</label><input type="number" id="edBpm" value="100" min="30" max="300"></div></div>
+    <label class="lbl">Ноты</label><textarea id="edTxt" placeholder="C4 D4 E4:2 R E4 G4:.5 A4:.5 G4:2"></textarea>
+    <p class="small">Нота — буква и октава: <code>C4</code> — «до» в центре клавиатуры, <code>F#4</code> — диез, <code>Bb3</code> — бемоль. Длительность в долях через двоеточие: <code>E4:2</code> — две доли, <code>D4:.5</code> — полдоли (без двоеточия — одна доля). <code>R</code> — пауза, <code>C4+E4+G4</code> — аккорд.</p>
+    <div class="btns"><button id="edTry">▶ Прослушать</button><button data-close>Отмена</button><button class="btn-acc" id="edOk">Сохранить</button></div>`,sh=>{
+    const get=()=>parseText(sh.querySelector('#edTxt').value,+sh.querySelector('#edBpm').value||100);
+    sh.querySelector('#edTry').onclick=()=>{const r=get();if(r.errs.length){toast('Не понял: '+r.errs.slice(0,5).join(' '),4000);return}for(const n of r.notes)if(n.t<60)playTone(n.m,n.d,0.7,n.t+0.05)};
+    sh.querySelector('#edOk').onclick=()=>{const r=get();if(r.errs.length){toast('Не понял: '+r.errs.slice(0,5).join(' '),4000);return}if(!r.notes.length){toast('Добавь хотя бы одну ноту');return}
+      const s=fin({id:'u'+Date.now(),cat:sh.querySelector('#edCat').value,title:sh.querySelector('#edName').value.trim()||'Моя песня',sub:'Свои ноты',notes:r.notes});
+      LIB.push(s);saveUser();renderHome();closeModal();toast('Сохранено!')}})}
+function settingsDialog(){modal(`<h3>Настройки</h3>
+  <label class="row"><span>Названия нот: До, Ре, Ми<br><span class="small">Выключи, чтобы видеть C, D, E</span></span><input type="checkbox" id="stSolf" ${S.solf?'checked':''}></label>
+  <label class="row"><span>Подписи на всех клавишах</span><input type="checkbox" id="stAll" ${S.allLabels?'checked':''}></label>
+  <label class="row"><span>Засчитывать ноту в любой октаве<br><span class="small">Удобно, если у пианино меньше клавиш или микрофон путает октавы</span></span><input type="checkbox" id="stOct" ${S.anyOct?'checked':''}></label>
+  <label class="row"><span>Звук экранных клавиш</span><input type="checkbox" id="stSnd" ${S.touchSound?'checked':''}></label>
+  <label class="row"><span>Длина нот на ленте</span><input type="range" id="stZoom" min="0.6" max="2" step="0.1" value="${S.zoom}"></label>
+  <div class="row" style="display:block"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><span>Чувствительность микрофона</span><input type="range" id="stSens" min="0" max="1" step="0.02" value="${S.sens}"></div>
+    <div class="meter" id="sensMeter"><i></i><b></b></div>
+    <p class="small">Зелёное — громкость, жёлтая черта — порог. Когда играешь, зелёное должно заходить за черту, а в тишине оставаться до неё.${mic.on?'':' Сначала включи 🎤.'}</p></div>
+  <div class="btns" style="justify-content:flex-start"><button id="stMidi">🎹 Подключить MIDI-клавиатуру</button></div>
+  <p class="small">Клавиатура компьютера: <code>A W S E D F T G Y H U J K</code> — ноты от «до», <code>Z</code>/<code>X</code> — октава ниже/выше, <code>Пробел</code> — пауза.</p>
+  <div class="btns"><button class="btn-acc" data-close>Готово</button></div>`,sh=>{
+  const bind=(id,key,after)=>{sh.querySelector(id).onchange=e=>{const el=e.target;S[key]=el.type==='checkbox'?el.checked:+el.value;saveSet();after&&after()}};
+  bind('#stSolf','solf',relabel);bind('#stAll','allLabels',relabel);bind('#stOct','anyOct');bind('#stSnd','touchSound');bind('#stZoom','zoom');
+  const sens=sh.querySelector('#stSens');sens.oninput=()=>{S.sens=+sens.value;saveSet()};
+  sh.querySelector('#stMidi').onclick=initMidi;
+  const mi=sh.querySelector('#sensMeter i'),mb=sh.querySelector('#sensMeter b');
+  modalTick=()=>{mi.style.width=(lvlMap(mic.level)*100).toFixed(1)+'%';mb.style.left=(lvlMap(thresh())*100).toFixed(1)+'%'};modalTick()})}
+
+/* ================= events ================= */
+$('#lib').addEventListener('click',e=>{const del=e.target.closest('[data-del]');
+  if(del){e.stopPropagation();const s=LIB.find(x=>x.id===del.dataset.del);if(!s)return;
+    modal(`<h3>Удалить песню?</h3><p>«${esc(s.title)}» пропадёт из списка вместе с прогрессом.</p><div class="btns"><button data-close>Отмена</button><button class="btn-acc" id="delOk" style="background:var(--bad);color:#fff">Удалить</button></div>`,
+      sh=>{sh.querySelector('#delOk').onclick=()=>{LIB=LIB.filter(x=>x!==s);saveUser();const pr=store.get('pq_prog',{});delete pr[s.id];store.set('pq_prog',pr);renderHome();closeModal()}});return}
+  const imp=e.target.closest('[data-imp]');
+  if(imp){const cat=imp.dataset.imp;if(cat==='my'){modal(`<h3>Добавить песню</h3><div class="btns" style="justify-content:stretch;flex-direction:column"><button class="btn-acc" id="chMidi">📂 Загрузить MIDI-файл</button><button id="chTxt">✎ Записать ноты вручную</button><button data-close>Отмена</button></div>`,
+      sh=>{sh.querySelector('#chMidi').onclick=()=>{closeModal();pickFile('my')};sh.querySelector('#chTxt').onclick=()=>editorDialog('my')})}else pickFile(cat);return}
+  const card=e.target.closest('[data-id]');if(card){const s=LIB.find(x=>x.id===card.dataset.id);if(s){audio();openSong(s)}}});
+$('#btnImport').onclick=()=>pickFile('my');
+$('#btnEditor').onclick=()=>editorDialog('my');
+$('#btnFree').onclick=()=>{audio();openFree()};
+$('#homeSet').onclick=settingsDialog;$('#pSet').onclick=settingsDialog;
+$('#pBack').onclick=closePlayer;
+$('#micBtn').onclick=()=>{if(mic.on)micStop();else micStart()};
+$('#tabs').addEventListener('click',e=>{const b=e.target.closest('[data-mode]');if(b)setMode(b.dataset.mode)});
+$('#playBtn').onclick=togglePlay;
+$('#btnRestart').onclick=reset;
+const stepSpeed=d=>{let i=SPEEDS.findIndex(s=>Math.abs(s-S.speed)<0.001);if(i<0)i=6;i=Math.max(0,Math.min(SPEEDS.length-1,i+d));S.speed=SPEEDS[i];saveSet();updPlay();P.infoKey=''};
+$('#spdDown').onclick=()=>stepSpeed(-1);$('#spdUp').onclick=()=>stepSpeed(1);
+$('#keys').addEventListener('pointerdown',e=>{const k=e.target.closest('.k');if(!k)return;e.preventDefault();press(+k.dataset.m,'touch')});
+$('#keys').addEventListener('contextmenu',e=>e.preventDefault());
+const KB=['KeyA','KeyW','KeyS','KeyE','KeyD','KeyF','KeyT','KeyG','KeyY','KeyH','KeyU','KeyJ','KeyK','KeyO','KeyL','KeyP','Semicolon'];
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('#modal').classList.contains('hidden')){closeModal();return}
+  if(!P.open||e.repeat||e.ctrlKey||e.metaKey||e.altKey)return;if(/INPUT|TEXTAREA|SELECT/.test(e.target.tagName))return;if(!$('#modal').classList.contains('hidden'))return;
+  if(e.code==='Space'){e.preventDefault();togglePlay();return}
+  if(e.code==='KeyZ'){P.kbBase=Math.max(24,P.kbBase-12);toast('Клавиатура: от '+nm(P.kbBase),1200);return}
+  if(e.code==='KeyX'){P.kbBase=Math.min(96,P.kbBase+12);toast('Клавиатура: от '+nm(P.kbBase),1200);return}
+  const i=KB.indexOf(e.code);if(i>=0){e.preventDefault();audio();press(P.kbBase+i,'kb')}});
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&P.playing){P.playing=false;updPlay()}});
+let rzT;window.addEventListener('resize',()=>{clearTimeout(rzT);rzT=setTimeout(()=>{if(P.open)layoutKeys(K.lo,K.hi)},150)});
+document.addEventListener('dragover',e=>e.preventDefault());
+document.addEventListener('drop',e=>{e.preventDefault();const f=e.dataTransfer&&e.dataTransfer.files[0];if(f)handleFile(f,'my')});
+
+loadLib();renderHome();updPlay();
+</script>
+</body>
+</html>

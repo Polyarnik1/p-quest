@@ -179,7 +179,6 @@ const store={get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v)
 const S=Object.assign({solf:true,allLabels:false,anyOct:true,sens:0.5,touchSound:true,zoom:1,speed:1},store.get('pq_set',{}));
 const saveSet=()=>store.set('pq_set',S);
 function nm(m,oct=true){const a=(S.solf?NS:NL)[m%12];return oct?a+(Math.floor(m/12)-1):a}
-function thresh(){return 0.04*Math.pow(0.05,S.sens)}
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function fmtT(s){s=Math.max(0,Math.round(s));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')}
 let toastT;function toast(t,ms=2800){const e=$('#toast');e.textContent=t;e.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>e.classList.remove('show'),ms)}
@@ -294,47 +293,98 @@ function playTone(m,dur=0.5,vel=0.8,at=0){const ac=audio();const t=ac.currentTim
   g.gain.setTargetAtTime(0.0001,t+hold,0.07);
   o1.connect(g);o2.connect(g2);g2.connect(g);g.connect(master);o1.start(t);o2.start(t);o1.stop(t+hold+0.6);o2.stop(t+hold+0.6)}
 
-/* ================= microphone + pitch detection (YIN) ================= */
-const mic={on:false,stream:null,src:null,an:null,buf:null,x:null,d:null,sr:48000,dec:2,level:0,cand:-1,cc:0,cur:-1,minSince:1,reat:false,heard:-1,cents:0,freq:0,avg:0,skip:1,fc:0};
+/* ================= microphone: multi-note spectral detection ================= */
+// Слушает реальное пианино: спектр (FFT 8192) -> поиск нескольких нот по гармоникам -> детектор удара по клавише.
+const FFTN=8192,MLO=33,MHI=100,HW=[0,1,.9,.8,.6,.5,.4],MINS=1.0,FLUX=6,MAXF=5500;
+const CT30=Math.pow(2,30/1200)-1,CT40=Math.pow(2,40/1200)-1;
+const F12=[];for(let m=0;m<128;m++)F12[m]=440*Math.pow(2,(m-69)/12);
+const MH=new Uint16Array(141);
+const mic={on:false,starting:false,denied:false,stream:null,src:null,an:null,db:null,td:null,rem:null,ring:[],ri:0,rn:0,sr:48000,binHz:5.4,
+  accF:[],assist:false,stab:new Uint8Array(128),cool:new Float64Array(128),onT:new Float64Array(128),firstT:new Float64Array(128),coolPc:new Float64Array(12),env:new Float32Array(10),ei:0,gOn:0,floor:-110,floor0:-110,cal:0,calN:[],level:0,sig:0,heard:-1,heardT:0,cents:0,freq:0,tune:0,avg:0,skip:1,fc:0,lastT:0};
+const reqDb=()=>6+14*(1-S.sens);
 async function micStart(){
+  if(mic.on||mic.starting)return;mic.starting=true;
   try{
     if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)throw Object.assign(new Error('nosupport'),{name:'NoSupport'});
     const ac=audio();
     const st=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
-    mic.stream=st;mic.src=ac.createMediaStreamSource(st);mic.an=ac.createAnalyser();mic.an.fftSize=4096;mic.src.connect(mic.an);
-    mic.buf=new Float32Array(4096);mic.sr=ac.sampleRate;mic.dec=Math.max(1,Math.round(mic.sr/24000));
-    mic.x=new Float32Array(Math.floor(4096/mic.dec));mic.d=new Float32Array(1200);mic.on=true;mic.cur=-1;mic.cand=-1;
-    updMicBtn();ensureLoop();toast('Микрофон включён — играй!')
-  }catch(e){micError(e)}}
+    mic.stream=st;mic.src=ac.createMediaStreamSource(st);const an=mic.an=ac.createAnalyser();
+    an.fftSize=FFTN;an.smoothingTimeConstant=0;an.minDecibels=-140;an.maxDecibels=0;mic.src.connect(an);
+    mic.sr=ac.sampleRate;mic.binHz=mic.sr/FFTN;const N=an.frequencyBinCount;
+    mic.db=new Float32Array(N);mic.td=new Float32Array(FFTN);mic.rem=new Uint8Array(N);
+    mic.ring=[];for(let i=0;i<12;i++)mic.ring.push(new Float32Array(N));mic.ri=0;mic.rn=0;
+    mic.stab.fill(0);mic.cool.fill(0);mic.onT.fill(0);mic.firstT.fill(0);mic.coolPc.fill(0);mic.env.fill(1);mic.gOn=0;mic.cal=0.9;mic.calN=[];mic.heard=-1;mic.sig=0;mic.on=true;mic.denied=false;mic.lastT=performance.now();
+    updMicBtn();ensureLoop();toast('Микрофон включён. Помолчи секунду, я настраиваюсь…',2200)
+  }catch(e){micError(e)}finally{mic.starting=false}}
 function micStop(){try{mic.stream&&mic.stream.getTracks().forEach(t=>t.stop());mic.src&&mic.src.disconnect()}catch(e){}
-  mic.on=false;mic.heard=-1;mic.level=0;updMicBtn()}
+  mic.on=false;mic.heard=-1;mic.level=0;mic.cal=0;updMicBtn()}
 function micError(e){let inFrame=true;try{inFrame=window.self!==window.top}catch(_){}
-  let msg;
+  mic.denied=true;let msg;
   if(!window.isSecureContext)msg='Микрофон работает только по адресу https:// (или localhost). Открой приложение по защищённой ссылке.';
-  else if(inFrame&&(e.name==='NotAllowedError'||e.name==='SecurityError'||e.name==='NoSupport'))msg='Во встроенном окне браузер не даёт доступ к микрофону. Открой файл piano-quest.html напрямую в Chrome, Safari или Edge — там всё заработает.';
-  else if(e.name==='NotAllowedError')msg='Доступ к микрофону запрещён. Разреши его в настройках сайта (значок слева от адреса) и попробуй снова.';
-  else if(e.name==='NotFoundError')msg='Микрофон не найден. Подключи его и попробуй снова.';
+  else if(inFrame&&(e.name==='NotAllowedError'||e.name==='SecurityError'||e.name==='NoSupport'))msg='Во встроенном окне браузер не даёт доступ к микрофону. Открой страницу напрямую в Chrome, Safari или Edge — там всё заработает.';
+  else if(e.name==='NotAllowedError')msg='Доступ к микрофону запрещён. Разреши его в настройках сайта (значок слева от адреса) и обнови страницу.';
+  else if(e.name==='NotFoundError')msg='Микрофон не найден. Подключи его и нажми 🎤 снова.';
   else msg='Не удалось включить микрофон: '+(e.message||e.name);
   modal(`<h3>🎤 Микрофон</h3><p>${esc(msg)}</p><p class="small">Пока можно играть, нажимая клавиши на экране, на клавиатуре компьютера или на MIDI-клавиатуре.</p><div class="btns"><button class="btn-acc" data-close>Понятно</button></div>`)}
-function yin(x,sr){const W=x.length>>1;const maxT=Math.min(W-1,Math.floor(sr/55),mic.d.length-2),minT=Math.max(2,Math.floor(sr/2200));const d=mic.d;
-  for(let tau=1;tau<=maxT;tau++){let s=0;for(let j=0;j<W;j++){const df=x[j]-x[j+tau];s+=df*df}d[tau]=s}
-  d[0]=1;let run=0;for(let tau=1;tau<=maxT;tau++){run+=d[tau];d[tau]=run>0?d[tau]*tau/run:1}
-  let tau=-1;for(let t=minT;t<=maxT;t++){if(d[t]<0.15){while(t+1<=maxT&&d[t+1]<d[t])t++;tau=t;break}}
-  if(tau<0)return -1;
-  let bt=tau;if(tau>1&&tau<maxT){const a=d[tau-1],b=d[tau],c=d[tau+1];const den=a-2*b+c;if(den!==0)bt=tau+(a-c)/(2*den)}
-  return sr/bt}
-function micTick(){mic.an.getFloatTimeDomainData(mic.buf);const b=mic.buf,x=mic.x,dec=mic.dec,n=x.length;let r=0;
-  for(let i=0;i<n;i++){let s=0;const o=i*dec;for(let k=0;k<dec;k++)s+=b[o+k];const v=s/dec;x[i]=v;r+=v*v}
-  const rms=Math.sqrt(r/n);mic.level=mic.level*0.6+rms*0.4;const th=thresh();
-  if(rms<th){mic.cand=-1;mic.cc=0;mic.cur=-1;mic.heard=-1;mic.minSince=rms;mic.reat=false;return}
-  if(rms<mic.minSince)mic.minSince=rms;
-  if(rms>mic.minSince*1.8&&rms>th*1.5){mic.reat=true;mic.minSince=rms}
-  const f=yin(x,mic.sr/dec);if(f<=0)return;
-  const mf=69+12*Math.log2(f/440);const m=Math.round(mf);if(m<21||m>108)return;
-  mic.freq=f;mic.cents=Math.round((mf-m)*100);mic.heard=m;
-  if(m===mic.cand)mic.cc++;else{mic.cand=m;mic.cc=1}
-  if(mic.cc>=3&&(m!==mic.cur||mic.reat)){mic.cur=m;mic.reat=false;mic.minSince=rms;userNote(m,'mic')}}
-function updMicBtn(){const b=$('#micBtn');b.classList.toggle('on',mic.on);$('#micTxt').textContent=mic.on?'Слушаю':'Микрофон';
+// пик спектра рядом с частотой f (окно ±cents): PV — уровень, PP — «острота» (на сколько dB выше соседних участков).
+// mask — участки, уже объяснённые найденной нотой
+let PV=-140,PP=0,THR=-100;
+function pk(arr,f,ct,mask){const x=f/mic.binHz,half=Math.max(1,x*ct),lo=Math.round(x-half),hi=Math.round(x+half),n=arr.length;let b=-140,bi=-1;
+  for(let i=lo<0?0:lo;i<=hi&&i<n;i++){if(mask&&mask[i])continue;const v=arr[i];if(v>b){b=v;bi=i}}
+  PV=b;if(bi<0){PP=0;return -1}
+  let l=0,ln=0,r=0,rn=0;for(let i=lo-6;i<=lo-3;i++)if(i>=0){l+=arr[i];ln++}for(let i=hi+3;i<=hi+6;i++)if(i<n){r+=arr[i];rn++}
+  PP=b-Math.min(ln?l/ln:b,rn?r/rn:b);return bi}
+// частота гармоники уже найденной ноты (с допуском на растяжение струн пианино)?
+function explained(f,acc){for(let j=0;j<acc.length;j++){const r=f/acc[j];if(r<0.9)continue;const k=Math.round(r);if(k<1)continue;if(Math.abs(r/k-1)<0.004+0.0003*k*k)return (j<<8)|k}return -1}
+// на шаге-аккорде: гармоника «объяснена» нижней нотой, но заметно выше соседних её гармоник — значит, там сыграна ещё одна нота
+function excess(ex,fh){const j=ex>>8,k=ex&255;if(k<2||k>12)return false;const fa=mic.accF[j];pk(mic.db,fh,CT40);const L=PV;
+  pk(mic.db,fa*(k-1),CT40);const a=PV;pk(mic.db,fa*(k+1),CT40);return L-(a+PV)/2>=6}
+function sal(m,ft,acc){const f0=F12[m]*ft;let S=0,c=0,tot=0,h1=false;
+  for(let h=1;h<=6;h++){const fh=f0*h;if(fh>MAXF)break;tot++;pk(mic.db,fh,h<3?CT30:CT40,mic.rem);
+    if(PV>=THR&&PP>8){const pp=PP;if(acc.length){const ex=explained(fh,acc);if(ex>=0&&!(mic.assist&&excess(ex,fh)))continue}S+=HW[h]*(pp>20?1:(pp-8)/12);c++;if(h===1)h1=true}}
+  if(c<Math.min(m<48?3:2,tot))return 0;if(m>=52&&!h1)return 0;return S}
+function markRem(m,ft){const f0=F12[m]*ft,N=mic.rem.length;for(let h=1;h<=10;h++){const fh=f0*h;if(fh>6000)break;const x=Math.round(fh/mic.binHz);for(let i=x-2;i<=x+2;i++)if(i>=0&&i<N)mic.rem[i]=1}}
+function flux(m,ft,ref){const f0=F12[m]*ft;let s=0,w=0;
+  for(let h=1;h<=4;h++){const fh=f0*h;if(fh>MAXF)break;pk(mic.db,fh,CT40);const pn=PV;pk(ref,fh,CT40);if(pn>=THR){const d=pn-PV;s+=HW[h]*(d>0?d:0);w+=HW[h]}}
+  return w?s/w:0}
+// точная частота пика возле f (параболическая интерполяция), −1 если пика нет
+function peakF(f){const bi=pk(mic.db,f,CT30);if(bi<1||PP<12||bi>=mic.db.length-1)return -1;const db=mic.db,y0=db[bi-1],y1=db[bi],y2=db[bi+1],den=y0-2*y1+y2;return (bi+(den?0.5*(y0-y2)/den:0))*mic.binHz}
+function micTick(now){
+  const an=mic.an,db=mic.db,N=db.length,bh=mic.binHz,dt=Math.min(0.2,(now-mic.lastT)/1000);mic.lastT=now;
+  an.getFloatFrequencyData(db);for(let i=0;i<N;i++){const v=db[i];if(!(v>-140))db[i]=-140}
+  mic.ring[mic.ri].set(db);mic.ri=(mic.ri+1)%12;if(mic.rn<12)mic.rn++;
+  an.getFloatTimeDomainData(mic.td);const td=mic.td;let r=0,r2=0;for(let i=FFTN-2048;i<FFTN;i++)r+=td[i]*td[i];for(let i=FFTN-1024;i<FFTN;i++)r2+=td[i]*td[i];
+  mic.level=mic.level*0.5+Math.sqrt(r/2048)*0.5;
+  // резкий рост громкости за ~20 мс = удар по клавише (помогает, когда та же нота ещё звучит на педали)
+  const e=Math.sqrt(r2/1024);let emin=1;for(let j=3;j<10;j++){const v=mic.env[(mic.ei-j+20)%10];if(v<emin)emin=v}
+  mic.env[mic.ei]=e;mic.ei=(mic.ei+1)%10;if(e>1.8*emin&&e>2e-4)mic.gOn=now;
+  // уровень шума комнаты: медиана спектра (медленно растёт, быстро падает)
+  const b1=Math.round(150/bh),b2=Math.min(N-1,Math.round(5000/bh));MH.fill(0);let mx=-140;
+  for(let i=b1;i<=b2;i++){const v=db[i];MH[Math.min(140,Math.max(0,Math.round(v+140)))]++;if(v>mx)mx=v}
+  let acc=0,k=0;const half=(b2-b1+1)>>1;for(;k<141;k++){acc+=MH[k];if(acc>=half)break}const med=k-140;
+  if(mic.cal>0){mic.calN.push(med);mic.cal-=dt;if(mic.cal<=0){mic.calN.sort((a,b)=>a-b);mic.floor=Math.max(-118,mic.calN[mic.calN.length>>1]);mic.floor0=mic.floor;mic.calN=[];updMicBtn();P.infoKey=''}else return}
+  if(med<mic.floor)mic.floor=Math.max(mic.floor0-12,mic.floor+(med-mic.floor)*0.15);else mic.floor=Math.min(med,mic.floor+0.5*dt);
+  if(mic.level<2e-5){mic.stab.fill(0);mic.heard=-1;return} // цифровая тишина: нечего слушать
+  mic.sig=mic.sig*0.6+Math.max(0,mx-mic.floor)*0.4;
+  // поиск нот: самая «объясняющая» -> вычесть её гармоники -> искать следующую среди неучтённых
+  const req=reqDb(),ft=Math.pow(2,mic.tune/1200),out=[],freqs=[];mic.accF=freqs;let S1=0;mic.rem.fill(0);THR=Math.max(mic.floor+req,mx-40);
+  for(let n=0;n<6;n++){let bm=-1,bs=0;for(let m=MLO;m<=MHI;m++){const sc=sal(m,ft,freqs);if(sc>bs){bs=sc;bm=m}}
+    if(bm<0||bs<MINS)break;if(n===0)S1=bs;else if(bs<0.5*S1)break;out.push({m:bm,S:bs,r:bs/S1});freqs.push(F12[bm]*ft);markRem(bm,ft)}
+  const inOut=new Set(out.map(o=>o.m)),stab=mic.stab;for(let m=MLO;m<=MHI;m++){const was=stab[m];stab[m]=inOut.has(m)?Math.min(250,was+1):0;if(!stab[m])mic.onT[m]=0;else if(!was)mic.firstT[m]=now}
+  if(mic.log)mic.log.push({t:Math.round(now),fl:+mic.floor.toFixed(1),out:out.map(o=>[o.m,+o.S.toFixed(2),+o.r.toFixed(2)])});
+  if(out.length){const b=out[0];mic.heard=b.m;mic.heardT=now;const f0=F12[b.m],cs=[];
+    for(let h=1;h<=4;h++){const fp=peakF(f0*ft*h);if(fp>0)cs.push([h,1200*Math.log2(fp/h/f0)])}
+    if(cs.length){const v=cs.map(x=>x[1]).sort((a,b)=>a-b),md=v[v.length>>1];mic.cents=Math.round(md);mic.freq=f0*Math.pow(2,md/1200);
+      const lo2=cs.filter(x=>x[0]<=2).map(x=>x[1]);   // строй считаем по основному тону и 2-й гармонике средних нот: у них растяжка струн ничтожна
+      if(b.m>=48&&b.m<=76&&lo2.length===2&&Math.abs(lo2[0]-lo2[1])<15&&b.S>=3&&stab[b.m]>=5){const t=(lo2[0]+lo2[1])/2;if(Math.abs(t)<40)mic.tune=Math.max(-35,Math.min(35,mic.tune+(t-mic.tune)*0.04))}}}
+  else if(now-mic.heardT>220)mic.heard=-1;
+  // удар по клавише: в гармониках ноты резко вырос уровень; событие подтверждаем, когда нота продержалась 5 кадров
+  if(mic.rn>=12){const ref=mic.ring[mic.ri],thr=now-mic.gOn<150?1.2:FLUX;
+    for(const o of out){const m=o.m;if(stab[m]<2||now-mic.cool[m]<220)continue;
+      if(flux(m,ft,ref)>=thr&&!mic.onT[m])mic.onT[m]=now;
+      if(stab[m]>=3&&now-mic.firstT[m]>=120&&mic.onT[m]&&now-mic.onT[m]<600){mic.onT[m]=0;mic.cool[m]=now;
+        if(now-mic.coolPc[m%12]<300)continue;mic.coolPc[m%12]=now;userNote(m,'mic',{r:o.r,S:o.S})}}}}
+function updMicBtn(){const b=$('#micBtn');b.classList.toggle('on',mic.on);$('#micTxt').textContent=mic.on?(mic.cal>0?'Настройка…':'Слушаю'):'Микрофон';
   b.classList.toggle('pulse',!mic.on&&P.open&&P.mode!=='demo')}
 function lvlMap(v){return Math.max(0,Math.min(1,Math.log10(Math.max(v,1e-4)/0.001)/2))}
 
@@ -376,15 +426,15 @@ function scrollToKey(m,instant){const p=K.pos[mapRange(m)];if(!p)return;const st
   const sl=st.scrollLeft;if(instant||p.x<sl+K.ww*0.5||p.x+p.w>sl+vw-K.ww*0.5)st.scrollTo({left:Math.max(0,p.x+p.w/2-vw/2),behavior:instant?'auto':'smooth'})}
 function leadIn(){return Math.min(3,Math.max(1,(CH*0.7)/pps()))}
 
-function openSong(s){P.song=s;showPlayer(s.title);setMode(P.mode==='free'?'wait':P.mode);
-  if(!mic.on&&!P.hinted){P.hinted=true;setTimeout(()=>toast('Нажми 🎤 вверху — и я буду слышать твоё пианино',3500),400)}}
+function openSong(s){P.song=s;showPlayer(s.title);setMode(P.mode==='free'?'wait':P.mode)}
 function openFree(){P.song=null;showPlayer('Свободная игра');setMode('free')}
 function showPlayer(title){P.open=true;$('#home').classList.add('hidden');$('#player').classList.remove('hidden');$('#pTitle').textContent=title;ensureLoop()}
-function closePlayer(){P.open=false;P.playing=false;$('#player').classList.add('hidden');$('#home').classList.remove('hidden');renderHome();updMicBtn()}
+function closePlayer(){if(mic.on)micStop();P.open=false;P.playing=false;$('#player').classList.add('hidden');$('#home').classList.remove('hidden');renderHome();updMicBtn()}
 function setMode(md){if(md!=='free'&&!P.song){toast('Сначала выбери песню в списке');return}
-  P.mode=md;document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('on',b.dataset.mode===md));
+  P.mode=md;if(md!=='demo'&&!mic.on&&!mic.denied)micStart();
+  document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('on',b.dataset.mode===md));
   $('#ctrl').classList.toggle('free',md==='free');updMicBtn();reset()}
-function reset(){P.runId=(P.runId||0)+1;Object.assign(P,{tail:0,playing:false,done:false,si:0,ri:0,di:0,good:0,bad:0,miss:0,score:0,combo:0,maxCombo:0,elapsed:0,judge:'',infoKey:'',progV:-1});P.flash.clear();
+function reset(){P.runId=(P.runId||0)+1;Object.assign(P,{got:new Set(),gotT:0,tail:0,playing:false,done:false,si:0,ri:0,di:0,good:0,bad:0,miss:0,score:0,combo:0,maxCombo:0,elapsed:0,judge:'',infoKey:'',progV:-1});P.flash.clear();
   if(P.mode==='free'||!P.song){P.notes=[];P.steps=[];layoutKeys(48,83);P.kbBase=60}
   else{P.notes=P.song.notes.map(n=>({m:n.m,t:n.t,d:n.d,hit:0,miss:0}));P.steps=buildSteps(P.notes);layoutKeys(P.song.lo,P.song.hi);
     const f=P.notes[0].m;P.kbBase=Math.floor(f/12)*12}
@@ -397,19 +447,24 @@ function flash(m,type){P.flash.set(mapRange(m),{type,until:performance.now()+(ty
 function press(m,src){if(S.touchSound)playTone(m,0.5,0.8);P.lastManual={m,time:performance.now()};if(P.mode==='demo'){flash(m,'pl');return}userNote(m,src)}
 
 /* ================= input → game logic ================= */
-function userNote(m,src){if(!P.open)return;
-  if(src==='mic'&&performance.now()-P.lastManual.time<650&&P.lastManual.m%12===m%12)return; // ignore echo of on-screen key sound
+function userNote(m,src,meta){if(!P.open)return;
+  if(src==='mic'&&performance.now()-P.lastManual.time<650&&P.lastManual.m%12===m%12)return; // эхо звука экранной клавиши
   if(P.mode==='free'){flash(m,'ok');return}
-  if(P.mode==='wait')waitInput(m);else if(P.mode==='rhythm')rhythmInput(m,src)}
+  if(P.mode==='wait')waitInput(m,meta);else if(P.mode==='rhythm')rhythmInput(m,src)}
 const PRAISE=['Верно!','Супер!','Отлично!','Так держать!','Класс!'];
-function waitInput(m){if(P.done)return;const st=P.steps[P.si];if(!st)return;
+function waitInput(m,meta){if(P.done)return;const st=P.steps[P.si];if(!st)return;
   if(!P.playing){P.playing=true;updPlay()}
-  const hitM=st.ms.find(x=>same(x,m));
-  if(hitM!==undefined){for(const n of st.notes)n.hit=1;P.good++;flash(hitM,'ok');P.si++;if(P.t<st.t)P.t=st.t;P.judge=PRAISE[P.good%PRAISE.length];
-    const nx=P.steps[P.si];if(nx)scrollToKey(nx.ms[0])}
-  else{P.bad++;flash(m,'bad');P.judge='Это '+nm(m)}}
-const hitWin=()=>0.2*S.speed+0.04;
-function rhythmInput(m,src){if(!P.playing)return;const win=hitWin();const tt=P.t-(src==='mic'?0.07*S.speed:0);let best=null,bd=1e9;
+  const now=performance.now();if(P.gotT&&now-P.gotT>1800){P.got=new Set();P.gotT=0}
+  const ch=st.ms.length>1,need=ch?[...new Set(st.ms.map(x=>x%12))]:st.ms,eq=ch?(t,x)=>t===x%12:(t,x)=>same(t,x);
+  const idx=need.findIndex((t,i)=>!P.got.has(i)&&eq(t,m));
+  if(idx>=0){P.got.add(idx);P.gotT=now;flash(ch?st.ms.find(x=>x%12===need[idx]):need[idx],'ok');
+    if(P.got.size>=Math.ceil(need.length*(ch?0.6:1))){for(const n of st.notes)n.hit=1;P.good++;P.si++;P.got=new Set();P.gotT=0;if(P.t<st.t)P.t=st.t;P.judge=PRAISE[P.good%PRAISE.length];
+      const nx=P.steps[P.si];if(nx)scrollToKey(nx.ms[0])}
+    else P.judge='Ещё '+(Math.ceil(need.length*0.6)-P.got.size)}
+  else if(need.some(t=>eq(t,m))){/* повторное срабатывание уже сыгранной ноты аккорда */}
+  else if(!ch&&(!meta||meta.r>=0.6)||ch&&!meta){P.bad++;flash(m,'bad');P.judge='Это '+nm(m)}}
+const hitWin=()=>0.22*S.speed+0.05;
+function rhythmInput(m,src){if(!P.playing)return;const win=hitWin();const tt=P.t-(src==='mic'?0.2*S.speed:0);let best=null,bd=1e9;
   for(let i=P.ri;i<P.notes.length;i++){const n=P.notes[i];if(n.t>tt+win)break;if(n.hit||n.miss||!same(n.m,m))continue;const dd=Math.abs(n.t-tt);if(dd<=win&&dd<bd){bd=dd;best=n}}
   if(best){best.hit=1;P.good++;P.combo++;P.maxCombo=Math.max(P.maxCombo,P.combo);const q=1-bd/win;P.score+=Math.round(50+50*q)+Math.min(P.combo,50)*2;P.judge=q>0.55?'Отлично!':'Хорошо';flash(best.m,'ok')}
   else{P.bad++;P.combo=0;P.judge='Не та нота';flash(m,'bad')}}
@@ -429,7 +484,8 @@ function finish(){if(P.done)return;P.done=true;P.playing=false;updPlay();const s
 let raf=0,lastTs=0;
 function ensureLoop(){if(!raf){lastTs=0;raf=requestAnimationFrame(loop)}}
 function loop(ts){const dt=lastTs?Math.min(0.05,(ts-lastTs)/1000):0;lastTs=ts;
-  if(mic.on&&(mic.skip<=1||(mic.fc++%mic.skip===0))){const t0=performance.now();micTick();mic.avg=mic.avg*0.95+(performance.now()-t0)*0.05;mic.skip=mic.avg>6?2:1}
+  mic.assist=P.open&&P.mode==='wait'&&!!P.steps[P.si]&&P.steps[P.si].ms.length>1;
+  if(mic.on&&(mic.skip<=1||(mic.fc++%mic.skip===0))){const t0=performance.now();micTick(t0);mic.avg=mic.avg*0.95+(performance.now()-t0)*0.05;mic.skip=mic.avg>6?2:1}
   const now=performance.now();
   if(P.open){update(dt,now);render(now)}
   if(modalTick)modalTick();
@@ -479,7 +535,8 @@ function renderKeys(now){const tg=new Set(),pl=new Set(),N=P.notes;
     if(f&&f.until>now)c+=' '+f.type;else{if(f)P.flash.delete(m);if(tg.has(m))c+=' tg';else if(pl.has(m))c+=' pl'}
     if(m===hd)c+=' hd';if(K.cls[m]!==c){K.el[m].className=c;K.cls[m]=c}}}
 function renderInfo(){let a='',b='';const md=P.mode;
-  if(md==='wait'){const st=P.steps[P.si];
+  if(mic.on&&mic.cal>0&&md!=='demo'){a='🤫 Тишина…';b='настраиваю микрофон'}
+  else if(md==='wait'){const st=P.steps[P.si];
     if(!st)a='Готово! 🎉';else if(!P.playing&&P.si===0)a='Сыграй: '+st.ms.map(m=>nm(m)).join(' + ');else a='Нажми: '+st.ms.map(m=>nm(m)).join(' + ');
     b=`✓ ${P.good}/${P.steps.length} · ✗ ${P.bad}`+(P.judge?'<br>'+esc(P.judge):'')}
   else if(md==='rhythm'){a=P.playing||P.done?P.score+' очков':'▶ Старт';b=`Комбо ${P.combo} · ✓${P.good} ✗${P.bad+P.miss}`+(P.judge?'<br>'+esc(P.judge):'')}
@@ -540,7 +597,7 @@ function settingsDialog(){modal(`<h3>Настройки</h3>
   <label class="row"><span>Длина нот на ленте</span><input type="range" id="stZoom" min="0.6" max="2" step="0.1" value="${S.zoom}"></label>
   <div class="row" style="display:block"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><span>Чувствительность микрофона</span><input type="range" id="stSens" min="0" max="1" step="0.02" value="${S.sens}"></div>
     <div class="meter" id="sensMeter"><i></i><b></b></div>
-    <p class="small">Зелёное — громкость, жёлтая черта — порог. Когда играешь, зелёное должно заходить за черту, а в тишине оставаться до неё.${mic.on?'':' Сначала включи 🎤.'}</p></div>
+    <p class="small">Зелёное — сила сигнала над шумом комнаты, жёлтая черта — порог. Играя, зелёное должно уверенно заходить за черту, а в тишине оставаться до неё. Шум комнаты приложение подстраивает само.${mic.on?'':' Сначала включи 🎤.'}</p></div>
   <div class="btns" style="justify-content:flex-start"><button id="stMidi">🎹 Подключить MIDI-клавиатуру</button></div>
   <p class="small">Клавиатура компьютера: <code>A W S E D F T G Y H U J K</code> — ноты от «до», <code>Z</code>/<code>X</code> — октава ниже/выше, <code>Пробел</code> — пауза.</p>
   <div class="btns"><button class="btn-acc" data-close>Готово</button></div>`,sh=>{
@@ -549,7 +606,7 @@ function settingsDialog(){modal(`<h3>Настройки</h3>
   const sens=sh.querySelector('#stSens');sens.oninput=()=>{S.sens=+sens.value;saveSet()};
   sh.querySelector('#stMidi').onclick=initMidi;
   const mi=sh.querySelector('#sensMeter i'),mb=sh.querySelector('#sensMeter b');
-  modalTick=()=>{mi.style.width=(lvlMap(mic.level)*100).toFixed(1)+'%';mb.style.left=(lvlMap(thresh())*100).toFixed(1)+'%'};modalTick()})}
+  modalTick=()=>{mi.style.width=(Math.min(1,mic.sig/50)*100).toFixed(1)+'%';mb.style.left=(Math.min(1,reqDb()/50)*100).toFixed(1)+'%'};modalTick()})}
 
 /* ================= events ================= */
 $('#lib').addEventListener('click',e=>{const del=e.target.closest('[data-del]');
